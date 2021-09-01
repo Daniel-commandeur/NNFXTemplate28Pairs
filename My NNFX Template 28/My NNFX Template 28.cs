@@ -11,7 +11,7 @@ namespace cAlgo.Robots
     [Robot(TimeZone = TimeZones.EasternStandardTime, AccessRights = AccessRights.None)]
     public class MyNNFXTemplate28 : Robot
     {
-        //Create Parameters EP10-Functions and Parameters
+        //Parameters for the Template Risk Management
         [Parameter("Risk %", Group = "Risk Management", DefaultValue = 0.02)]
         public double RiskPct { get; set; }
 
@@ -21,38 +21,65 @@ namespace cAlgo.Robots
         [Parameter("TP Factor", Group = "Risk Management", DefaultValue = 1)]
         public double TpFactor { get; set; }
 
-        [Parameter("Enable Trailing Stop", Group = "Risk Management", DefaultValue = false)]
-        public bool EnableTrailingStop { get; set; }
+        //Parameters for the Template General Settings
+        [Parameter("Trade Method", Group = "General Settings", DefaultValue = TradeMethod.MultipleInstuments)]
+        public TradeMethod TradeMethodSelected { get; set; }
+
+        [Parameter("Name of WatchList", Group = "General Settings", DefaultValue = "28Pairs")]
+        public string WatchListName { get; set; }
+
+        [Parameter("Trade Hour", Group = "General Settings", DefaultValue = "55")]
+        public string TradeHour { get; set; }
+
+        [Parameter("Trade Minute", Group = "General Settings", DefaultValue = "16")]
+        public string TradeMinute { get; set; }
+
+        //Parameters for the Imported indicators
 
 
-        //Create indicator variables as seen in EP5-ATR
+
+        //indicator variables for the Template
         private AverageTrueRange _atr;
         private string _botName;
+        private Symbol[] _tradeList;
 
-        private Symbol[] TradeList;
+        public enum TradeMethod
+        {
+            MultipleInstuments,
+            OnSetTime,
+            OnBar
+        }
+
+
+        //indicator variables for the Imported indicators
+
+
 
         protected override void OnStart()
         {
-            //Get Name of Bot and Currency pair of current instance as seen in EP15-Deploy
+            //Get Name of Bot and Currency pair of current instance
             _botName = GetType().ToString();
-            _botName = _botName.Substring(_botName.LastIndexOf('.') + 1) + "_" + SymbolName;
+            _botName = _botName.Substring(_botName.LastIndexOf('.') + 1);
 
-            //Load ATR indicator on start up as seen in EP5-ATR
+            //ATR indicator for Money Management system
             _atr = Indicators.AverageTrueRange(14, MovingAverageType.Exponential);
 
-            //Load Currencies
-
-            foreach (Watchlist watchlist in Watchlists)
+            //Load Currencies if necessary
+            if (TradeMethodSelected.Equals(TradeMethod.MultipleInstuments))
             {
-                if (watchlist.Name == "28Pairs")
+                foreach (Watchlist watchlist in Watchlists)
                 {
-                    TradeList = Symbols.GetSymbols(watchlist.SymbolNames.ToArray());
+                    if (watchlist.Name == WatchListName)
+                    {
+                        _tradeList = Symbols.GetSymbols(watchlist.SymbolNames.ToArray());
+                    }
                 }
-            }
-            foreach (Symbol symbol in TradeList)
-            {
-                var bars = MarketData.GetBars(TimeFrame, symbol.Name);
-                bars.BarOpened += OnBarsBarOpened;
+
+                foreach (Symbol symbol in _tradeList)
+                {
+                    var bars = MarketData.GetBars(TimeFrame, symbol.Name);
+                    bars.BarOpened += OnBarsBarOpened;
+                }
             }
 
             //Load here the specific indicators for this bot
@@ -63,62 +90,100 @@ namespace cAlgo.Robots
 
         private void OnBarsBarOpened(BarOpenedEventArgs obj)
         {
-            if (!TimeToTrade())
+            //Check if its time to make a trade
+            if (!TimeToTrade() && !TradeMethodSelected.Equals(TradeMethod.MultipleInstuments))
             {
                 return;
             }
-            // Put your core logic here, see EP7-MACD and EP8-Custom Indicators for examples
-
+            string label = _botName + " _ " + obj.Bars.SymbolName;
+            //Put your core logic in the private methods OpenBuyTrade and OpenSellTrade
+            if (OpenBuyTrade(obj))
+            {
+                Open(TradeType.Buy, label);
+                Close(TradeType.Sell, label);
+            }
+            if (OpenSellTrade(obj))
+            {
+                Open(TradeType.Sell, label);
+                Close(TradeType.Buy, label);
+            }
 
         }
 
-        protected override void OnTick() { }
-
-        protected override void OnBar() { }
-
-        //Function for opening a new trade - EP10-Functions and Parameters
-        private void Open(TradeType tradeType, string Label)
+        protected override void OnTick()
         {
-            //Check there's no existing position before entering a trade
-            if (Positions.Find(Label, SymbolName) != null)
+            //Check if its time to make a trade
+            if (!TimeToTrade() && !TradeMethodSelected.Equals(TradeMethod.OnSetTime))
+            {
+                return;
+            }
+            string label = _botName + " _ " + SymbolName;
+            //Put your core logic in the private methods OpenBuyTrade and OpenSellTrade
+            if (OpenBuyTrade())
+            {
+                Open(TradeType.Buy, label);
+                Close(TradeType.Sell, label);
+            }
+            if (OpenSellTrade())
+            {
+                Open(TradeType.Sell, label);
+                Close(TradeType.Buy, label);
+            }
+        }
+
+        protected override void OnBar()
+        {
+            if (!TradeMethodSelected.Equals(TradeMethod.OnBar))
+            {
+                return;
+            }
+            string label = _botName + " _ " + SymbolName;
+            //Put your core logic in the private methods OpenBuyTrade and OpenSellTrade
+            if (OpenBuyTrade())
+            {
+                Open(TradeType.Buy, label);
+                Close(TradeType.Sell, label);
+            }
+            if (OpenSellTrade())
+            {
+                Open(TradeType.Sell, label);
+                Close(TradeType.Buy, label);
+            }
+        }
+
+        //Conditions for opening a Buy Trade
+        private bool OpenBuyTrade(BarOpenedEventArgs obj = null)
+        {
+            return false;
+        }
+
+        //Conditions for opening a Sell Trade
+        private bool OpenSellTrade(BarOpenedEventArgs obj = null)
+        {
+            return false;
+        }
+
+        //Function for opening a new trade
+        private void Open(TradeType tradeType, string label)
+        {
+            //Check there's no existing position before entering a trade, label contains the Indicatorname and the currency
+            if (Positions.Find(label) != null)
             {
                 return;
             }
 
-            //Calculate trade amount based on ATR - EP6-Money Management
+            //Calculate trade amount based on ATR
             double atr = Math.Round(_atr.Result.Last(0) / Symbol.PipSize, 0);
             double tradeAmount = Account.Equity * RiskPct / (1.5 * atr * Symbol.PipValue);
             tradeAmount = Symbol.NormalizeVolumeInUnits(tradeAmount, RoundingMode.Down);
 
-            ExecuteMarketOrder(tradeType, SymbolName, tradeAmount, Label, SlFactor * atr, TpFactor * atr, null, EnableTrailingStop);
+            ExecuteMarketOrder(tradeType, SymbolName, tradeAmount, label, SlFactor * atr, TpFactor * atr, null);
         }
 
-        private void Open(string symbolName, TradeType tradeType, string Label)
+        //Function for closing trades
+        private void Close(TradeType tradeType, string label)
         {
-            //Check there's no existing position before entering a trade
-            if (Positions.Find(Label, symbolName) != null)
-            {
-                return;
-            }
-
-            //Calculate trade amount based on ATR - EP6-Money Management
-            double atr = Math.Round(_atr.Result.Last(0) / Symbol.PipSize, 0);
-            double tradeAmount = Account.Equity * RiskPct / (1.5 * atr * Symbol.PipValue);
-            tradeAmount = Symbol.NormalizeVolumeInUnits(tradeAmount, RoundingMode.Down);
-
-            ExecuteMarketOrder(tradeType, symbolName, tradeAmount, Label, SlFactor * atr, TpFactor * atr, null, EnableTrailingStop);
-        }
-
-        //Function for closing trades - EP10-Functions and Parameters
-        private void Close(TradeType tradeType, string Label)
-        {
-            foreach (Position position in Positions.FindAll(Label, SymbolName, tradeType))
-                ClosePosition(position);
-        }
-
-        private void Close(string symbolName, TradeType tradeType, string Label)
-        {
-            foreach (Position position in Positions.FindAll(Label, symbolName, tradeType))
+            foreach (Position position in Positions.FindAll(label, SymbolName, tradeType))
                 ClosePosition(position);
         }
 
