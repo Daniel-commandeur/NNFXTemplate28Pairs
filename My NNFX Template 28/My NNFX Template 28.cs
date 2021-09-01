@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using cAlgo.API;
 using cAlgo.API.Indicators;
@@ -22,8 +23,11 @@ namespace cAlgo.Robots
         public double TpFactor { get; set; }
 
         //Parameters for the Template General Settings
-        [Parameter("Trade Method", Group = "General Settings", DefaultValue = TradeMethod.MultipleInstuments)]
-        public TradeMethod TradeMethodSelected { get; set; }
+        [Parameter("Trade On Time", Group = "General Settings", DefaultValue = true)]
+        public bool TradeOnTime { get; set; }
+
+        [Parameter("Trade On Multiple Instruments", Group = "General Settings", DefaultValue = true)]
+        public bool TradeMultipleInstruments { get; set; }
 
         [Parameter("Name of WatchList", Group = "General Settings", DefaultValue = "28Pairs")]
         public string WatchListName { get; set; }
@@ -39,16 +43,9 @@ namespace cAlgo.Robots
 
 
         //indicator variables for the Template
-        private AverageTrueRange _atr;
+        private List<AverageTrueRange> _atr;
         private string _botName;
-        private Symbol[] _tradeList;
-
-        public enum TradeMethod
-        {
-            MultipleInstuments,
-            OnSetTime,
-            OnBar
-        }
+        private List<Symbol> _symbolList;
 
 
         //indicator variables for the Imported indicators
@@ -62,23 +59,26 @@ namespace cAlgo.Robots
             _botName = _botName.Substring(_botName.LastIndexOf('.') + 1);
 
             //ATR indicator for Money Management system
-            _atr = Indicators.AverageTrueRange(14, MovingAverageType.Exponential);
+            _atr = new List<AverageTrueRange>();
 
             //Load Currencies if necessary
-            if (TradeMethodSelected.Equals(TradeMethod.MultipleInstuments))
+            if (TradeMultipleInstruments)
             {
-                foreach (Watchlist watchlist in Watchlists)
-                {
-                    if (watchlist.Name == WatchListName)
-                    {
-                        _tradeList = Symbols.GetSymbols(watchlist.SymbolNames.ToArray());
-                    }
-                }
+                _symbolList = Symbols.GetSymbols(Watchlists.FirstOrDefault(w => w.Name == WatchListName).SymbolNames.ToArray()).ToList();
+                
 
-                foreach (Symbol symbol in _tradeList)
+                foreach (Symbol symbol in _symbolList)
                 {
                     var bars = MarketData.GetBars(TimeFrame, symbol.Name);
-                    bars.BarOpened += OnBarsBarOpened;
+                    if (TradeOnTime)
+                    {
+                        bars.BarOpened += OnBarsBarOpened;
+                    }
+                    else 
+                    {
+                        bars.Tick += OnBarTick;
+                    }
+                    _atr.Add(Indicators.AverageTrueRange(bars, 14, MovingAverageType.Exponential));
                 }
             }
 
@@ -88,84 +88,83 @@ namespace cAlgo.Robots
 
         }
 
-        private void OnBarsBarOpened(BarOpenedEventArgs obj)
+        private void OnBarTick(BarsTickEventArgs obj)
         {
             //Check if its time to make a trade
-            if (!TimeToTrade() && !TradeMethodSelected.Equals(TradeMethod.MultipleInstuments))
+            if (!TradeMultipleInstruments && !TradeOnTime)
             {
                 return;
             }
-            string label = _botName + " _ " + obj.Bars.SymbolName;
-            //Put your core logic in the private methods OpenBuyTrade and OpenSellTrade
-            if (OpenBuyTrade(obj))
+            MakeTrades(obj.Bars.SymbolName, obj);
+        }
+
+        private void OnBarsBarOpened(BarOpenedEventArgs obj)
+        {
+            //Check if its time to make a trade
+            if (!TradeMultipleInstruments && TradeOnTime)
             {
-                Open(TradeType.Buy, label);
-                Close(TradeType.Sell, label);
-            }
-            if (OpenSellTrade(obj))
-            {
-                Open(TradeType.Sell, label);
-                Close(TradeType.Buy, label);
+                return;
             }
 
+            //Put your core logic in the private methods OpenBuyTrade and OpenSellTrade
+            MakeTrades(obj.Bars.SymbolName, obj);
         }
 
         protected override void OnTick()
         {
             //Check if its time to make a trade
-            if (!TimeToTrade() && !TradeMethodSelected.Equals(TradeMethod.OnSetTime))
+            if (!TradeOnTime && !TimeToTrade())
             {
                 return;
             }
-            string label = _botName + " _ " + SymbolName;
+
             //Put your core logic in the private methods OpenBuyTrade and OpenSellTrade
-            if (OpenBuyTrade())
-            {
-                Open(TradeType.Buy, label);
-                Close(TradeType.Sell, label);
-            }
-            if (OpenSellTrade())
-            {
-                Open(TradeType.Sell, label);
-                Close(TradeType.Buy, label);
-            }
+            MakeTrades(SymbolName, new object());
         }
 
         protected override void OnBar()
         {
-            if (!TradeMethodSelected.Equals(TradeMethod.OnBar))
+            if (TradeOnTime)
             {
                 return;
             }
-            string label = _botName + " _ " + SymbolName;
+
             //Put your core logic in the private methods OpenBuyTrade and OpenSellTrade
-            if (OpenBuyTrade())
+            MakeTrades(SymbolName, new object());
+        }
+
+        private void MakeTrades<T>(string symbolname, T obj)
+        {
+            if (OpenBuyTrade<T>(obj))
             {
-                Open(TradeType.Buy, label);
-                Close(TradeType.Sell, label);
+                Open(TradeType.Buy, symbolname);
+                Close(TradeType.Sell, symbolname);
             }
-            if (OpenSellTrade())
+            if (OpenSellTrade<T>(obj))
             {
-                Open(TradeType.Sell, label);
-                Close(TradeType.Buy, label);
+                Open(TradeType.Sell, symbolname);
+                Close(TradeType.Buy, symbolname);
             }
         }
 
-        //Conditions for opening a Buy Trade
-        private bool OpenBuyTrade(BarOpenedEventArgs obj = null)
+        // *******       Conditions for opening a Buy Trade       *******
+        private bool OpenBuyTrade<T>(T obj)
         {
             return false;
         }
 
-        //Conditions for opening a Sell Trade
-        private bool OpenSellTrade(BarOpenedEventArgs obj = null)
+        //*******       Conditions for opening a Sell Trade       *******
+        private bool OpenSellTrade<T>(T obj)
         {
             return false;
         }
 
         //Function for opening a new trade
-        private void Open(TradeType tradeType, string label)
+        private void Open(TradeType tradeType, string instrument)
         {
+            string label = _botName + " _ " + instrument;
+            int symbolIndex = _symbolList.FindIndex(s => s.Name == instrument);
+
             //Check there's no existing position before entering a trade, label contains the Indicatorname and the currency
             if (Positions.Find(label) != null)
             {
@@ -173,16 +172,17 @@ namespace cAlgo.Robots
             }
 
             //Calculate trade amount based on ATR
-            double atr = Math.Round(_atr.Result.Last(0) / Symbol.PipSize, 0);
+            double atr = Math.Round(_atr[symbolIndex].Result.Last(0) / Symbol.PipSize, 0);
             double tradeAmount = Account.Equity * RiskPct / (1.5 * atr * Symbol.PipValue);
             tradeAmount = Symbol.NormalizeVolumeInUnits(tradeAmount, RoundingMode.Down);
 
-            ExecuteMarketOrder(tradeType, SymbolName, tradeAmount, label, SlFactor * atr, TpFactor * atr, null);
+            ExecuteMarketOrder(tradeType, SymbolName, tradeAmount, label, SlFactor * atr, TpFactor * atr);
         }
 
         //Function for closing trades
-        private void Close(TradeType tradeType, string label)
+        private void Close(TradeType tradeType, string instrument)
         {
+            string label = _botName + " _ " + instrument;
             foreach (Position position in Positions.FindAll(label, SymbolName, tradeType))
                 ClosePosition(position);
         }
