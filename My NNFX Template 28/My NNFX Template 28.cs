@@ -68,13 +68,13 @@ namespace cAlgo.Robots
                 return;
             }
             // Put your core logic here, see EP7-MACD and EP8-Custom Indicators for examples
-        }
 
-        protected override void OnTick()
-        {
-            
 
         }
+
+        protected override void OnTick() { }
+
+        protected override void OnBar() { }
 
         //Function for opening a new trade - EP10-Functions and Parameters
         private void Open(TradeType tradeType, string Label)
@@ -93,10 +93,10 @@ namespace cAlgo.Robots
             ExecuteMarketOrder(tradeType, SymbolName, tradeAmount, Label, SlFactor * atr, TpFactor * atr, null, EnableTrailingStop);
         }
 
-        private void Open(string SymbolName, TradeType tradeType, string Label)
+        private void Open(string symbolName, TradeType tradeType, string Label)
         {
             //Check there's no existing position before entering a trade
-            if (Positions.Find(Label, SymbolName) != null)
+            if (Positions.Find(Label, symbolName) != null)
             {
                 return;
             }
@@ -106,13 +106,19 @@ namespace cAlgo.Robots
             double tradeAmount = Account.Equity * RiskPct / (1.5 * atr * Symbol.PipValue);
             tradeAmount = Symbol.NormalizeVolumeInUnits(tradeAmount, RoundingMode.Down);
 
-            ExecuteMarketOrder(tradeType, SymbolName, tradeAmount, Label, SlFactor * atr, TpFactor * atr, null, EnableTrailingStop);
+            ExecuteMarketOrder(tradeType, symbolName, tradeAmount, Label, SlFactor * atr, TpFactor * atr, null, EnableTrailingStop);
         }
 
         //Function for closing trades - EP10-Functions and Parameters
         private void Close(TradeType tradeType, string Label)
         {
             foreach (Position position in Positions.FindAll(Label, SymbolName, tradeType))
+                ClosePosition(position);
+        }
+
+        private void Close(string symbolName, TradeType tradeType, string Label)
+        {
+            foreach (Position position in Positions.FindAll(Label, symbolName, tradeType))
                 ClosePosition(position);
         }
 
