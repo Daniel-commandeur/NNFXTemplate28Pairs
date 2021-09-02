@@ -33,10 +33,10 @@ namespace cAlgo.Robots
         public string WatchListName { get; set; }
 
         [Parameter("Trade Hour", Group = "General Settings", DefaultValue = "16")]
-        public string TradeHour { get; set; }
+        public int TradeHour { get; set; }
 
         [Parameter("Trade Minute", Group = "General Settings", DefaultValue = "55")]
-        public string TradeMinute { get; set; }
+        public int TradeMinute { get; set; }
 
         //Parameters for the Imported indicators
 
@@ -149,7 +149,7 @@ namespace cAlgo.Robots
             string label = _botName + " _ " + instrument;
             int symbolIndex = _symbolList.FindIndex(s => s.Name == instrument);
             Symbol sym = Symbols.GetSymbol(instrument);
-            Print("Opening" + instrument);
+
             //Check there's no existing position before entering a trade, label contains the Indicatorname and the currency
             if (Positions.Find(label) != null)
             {
