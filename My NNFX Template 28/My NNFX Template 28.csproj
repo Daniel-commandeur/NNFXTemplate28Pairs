@@ -60,4 +60,10 @@
   <Target Name="AfterBuild">
   </Target>
   -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Indicators\SSL Channel\SSL Channel\SSL Channel.csproj">
+      <Project>{7AF4B491-1558-4FC4-B55C-AD15417A896A}</Project>
+      <Name>SSL Channel</Name>
+    </ProjectReference>
+  </ItemGroup>
 </Project>

@@ -39,7 +39,11 @@ namespace cAlgo.Robots
         public int TradeMinute { get; set; }
 
         //Parameters for the Imported indicators
+        [Parameter("SSL Period", DefaultValue = 22)]
+        public int SSLPeriod { get; set; }
 
+        [Parameter("SSL MA Type", DefaultValue = MovingAverageType.Triangular)]
+        public MovingAverageType SSLMAType { get; set; }
 
 
         //indicator variables for the Template
@@ -49,7 +53,7 @@ namespace cAlgo.Robots
 
 
         //indicator variables for the Imported indicators
-
+        private List<SSLChannel> _sslList = new List<SSLChannel>();
 
 
         protected override void OnStart()
@@ -66,8 +70,8 @@ namespace cAlgo.Robots
 
                 foreach (Symbol symbol in _symbolList)
                 {
-                    var bars = MarketData.GetBars(TimeFrame, symbol.Name);
-                    if (TradeOnTime)
+                    var bars = MarketData.GetBars(TimeFrame.Daily, symbol.Name);
+                    if (!TradeOnTime)
                     {
                         bars.BarOpened += OnBarsBarOpened;
                     }
@@ -78,7 +82,7 @@ namespace cAlgo.Robots
                     _atr.Add(Indicators.AverageTrueRange(bars, 14, MovingAverageType.Exponential));
 
                     //Load here the specific indicators for this bot for multiple Instruments
-
+                    _sslList.Add(Indicators.GetIndicator<SSLChannel>(bars, SSLPeriod, SSLMAType));
                 }
             }
 
@@ -90,7 +94,7 @@ namespace cAlgo.Robots
         {
             if (TradeMultipleInstruments && TradeOnTime && TimeToTrade())
             {
-                MakeTrades(obj.Bars.SymbolName);
+                MakeTrades(obj.Bars);
             }
         }
 
@@ -98,7 +102,7 @@ namespace cAlgo.Robots
         {
             if (TradeMultipleInstruments && !TradeOnTime)
             {
-                MakeTrades(obj.Bars.SymbolName);
+                MakeTrades(obj.Bars);
             }
         }
 
@@ -106,7 +110,7 @@ namespace cAlgo.Robots
         {
             if (!TradeMultipleInstruments && TradeOnTime && TimeToTrade())
             {
-                MakeTrades(SymbolName);
+                MakeTrades(Bars);
             }
         }
 
@@ -114,28 +118,33 @@ namespace cAlgo.Robots
         {
             if (!TradeMultipleInstruments && !TradeOnTime)
             {
-                MakeTrades(SymbolName);
+                MakeTrades(Bars);
             }
         }
 
-        private void MakeTrades(string symbolname)
+        private void MakeTrades(Bars bars)
         {
-            if (OpenTrade(symbolname) != null)
+            if (OpenTrade(bars) != null)
             {
-                Open(OpenTrade(symbolname).Item1, symbolname);
-                Close(OpenTrade(symbolname).Item2, symbolname);
+                Close(OpenTrade(bars).Item2, bars.SymbolName);
+                Open(OpenTrade(bars).Item1, bars.SymbolName);
             }
         }
 
-        private Tuple<TradeType, TradeType> OpenTrade(string symbolname)
+        private Tuple<TradeType, TradeType> OpenTrade(Bars bars)
         {
+            int index = _symbolList.IndexOf(Symbols.GetSymbol(bars.SymbolName));
 
+            var SSLUp = _sslList[index]._sslUp.Last(0);
+            var PrevSSLUp = _sslList[index]._sslUp.Last(1);
+            var SSLDown = _sslList[index]._sslDown.Last(0);
+            var PrevSSLDown = _sslList[index]._sslDown.Last(1);
 
-            if (false)
+            if (SSLUp > SSLDown && PrevSSLUp < PrevSSLDown)
             {
                 return new Tuple<TradeType, TradeType>(TradeType.Buy, TradeType.Sell);
             }
-            else if (false)
+            else if (SSLUp < SSLDown && PrevSSLUp > PrevSSLDown)
             {
                 return new Tuple<TradeType, TradeType>(TradeType.Sell, TradeType.Buy);
             }
@@ -149,6 +158,7 @@ namespace cAlgo.Robots
             string label = _botName + " _ " + instrument;
             int symbolIndex = _symbolList.FindIndex(s => s.Name == instrument);
             Symbol sym = Symbols.GetSymbol(instrument);
+            double risk = RiskPct;
 
             //Check there's no existing position before entering a trade, label contains the Indicatorname and the currency
             if (Positions.Find(label) != null)
@@ -158,7 +168,7 @@ namespace cAlgo.Robots
 
             //Calculate trade amount based on ATR
             double atr = Math.Round(_atr[symbolIndex].Result.Last(0) / sym.PipSize, 0);
-            double tradeAmount = Account.Equity * RiskPct / (SlFactor * atr * sym.PipValue);
+            double tradeAmount = Account.Equity * risk / (SlFactor * atr * sym.PipValue);
             tradeAmount = sym.NormalizeVolumeInUnits(tradeAmount, RoundingMode.Down);
 
             ExecuteMarketOrder(tradeType, instrument, tradeAmount, label, SlFactor * atr, TpFactor * atr);
