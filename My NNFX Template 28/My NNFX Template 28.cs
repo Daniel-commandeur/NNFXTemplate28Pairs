@@ -38,13 +38,6 @@ namespace cAlgo.Robots
         [Parameter("Trade Minute", Group = "General Settings", DefaultValue = "55")]
         public int TradeMinute { get; set; }
 
-        //Parameters for the Imported indicators
-        [Parameter("SSL Period", DefaultValue = 22)]
-        public int SSLPeriod { get; set; }
-
-        [Parameter("SSL MA Type", DefaultValue = MovingAverageType.Triangular)]
-        public MovingAverageType SSLMAType { get; set; }
-
 
         //indicator variables for the Template
         private List<AverageTrueRange> _atr = new List<AverageTrueRange>();
@@ -53,7 +46,6 @@ namespace cAlgo.Robots
 
 
         //indicator variables for the Imported indicators
-        private List<SSLChannel> _sslList = new List<SSLChannel>();
 
 
         protected override void OnStart()
@@ -82,7 +74,6 @@ namespace cAlgo.Robots
                     _atr.Add(Indicators.AverageTrueRange(bars, 14, MovingAverageType.Exponential));
 
                     //Load here the specific indicators for this bot for multiple Instruments
-                    _sslList.Add(Indicators.GetIndicator<SSLChannel>(bars, SSLPeriod, SSLMAType));
                 }
             }
 
@@ -135,16 +126,11 @@ namespace cAlgo.Robots
         {
             int index = _symbolList.IndexOf(Symbols.GetSymbol(bars.SymbolName));
 
-            var SSLUp = _sslList[index]._sslUp.Last(0);
-            var PrevSSLUp = _sslList[index]._sslUp.Last(1);
-            var SSLDown = _sslList[index]._sslDown.Last(0);
-            var PrevSSLDown = _sslList[index]._sslDown.Last(1);
-
-            if (SSLUp > SSLDown && PrevSSLUp < PrevSSLDown)
+            if (false)
             {
                 return new Tuple<TradeType, TradeType>(TradeType.Buy, TradeType.Sell);
             }
-            else if (SSLUp < SSLDown && PrevSSLUp > PrevSSLDown)
+            else if (false)
             {
                 return new Tuple<TradeType, TradeType>(TradeType.Sell, TradeType.Buy);
             }
