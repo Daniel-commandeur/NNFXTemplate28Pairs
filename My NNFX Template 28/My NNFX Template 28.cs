@@ -13,8 +13,8 @@ namespace cAlgo.Robots
     public class MyNNFXTemplate28 : Robot
     {
         //Parameters for the Template Risk Management
-        [Parameter("Risk %", Group = "Risk Management", DefaultValue = 0.02)]
-        public double RiskPct { get; set; }
+        [Parameter("Risk %", Group = "Risk Management", DefaultValue = 2)]
+        public int RiskPct { get; set; }
 
         [Parameter("SL Factor", Group = "Risk Management", DefaultValue = 1.5)]
         public double SlFactor { get; set; }
@@ -38,14 +38,30 @@ namespace cAlgo.Robots
         [Parameter("Trade Minute", Group = "General Settings", DefaultValue = "55")]
         public int TradeMinute { get; set; }
 
+        //Parameters for the Imported indicators
+        [Parameter("SSL Period", Group = "Indicator Settings", DefaultValue = 10)]
+        public int SSLPeriod { get; set; }
 
-        //indicator variables for the Template
-        private List<AverageTrueRange> _atr = new List<AverageTrueRange>();
-        private List<Symbol> _symbolList = new List<Symbol>();
+        [Parameter("SSL MA Type", Group = "Indicator Settings", DefaultValue = MovingAverageType.Simple)]
+        public MovingAverageType SSLMAType { get; set; }
+
+
+        //indicator variables for the Template for multi symbols
+        private readonly Dictionary<string, AverageTrueRange> _atrList = new Dictionary<string, AverageTrueRange>();
+        private readonly Dictionary<string, Symbol> _symbolList = new Dictionary<string, Symbol>();
+
+        //indicator variables for the Template for single symbol
         private string _botName;
+        private AverageTrueRange _atr;
+        private int _barToCheck;
+        private double riskPercentage;
+        private bool _hadBigBar = false;
+
 
 
         //indicator variables for the Imported indicators
+        private readonly Dictionary<string, SSLChannel> _sslList = new Dictionary<string, SSLChannel>();
+        private SSLChannel _ssl;
 
 
         protected override void OnStart()
@@ -53,16 +69,19 @@ namespace cAlgo.Robots
             _botName = GetType().ToString();
             _botName = _botName.Substring(_botName.LastIndexOf('.') + 1);
 
-            _atr = new List<AverageTrueRange>();
+            _barToCheck = TradeOnTime ? 0 : 1;
+            riskPercentage = (double)RiskPct / 100;
 
             if (TradeMultipleInstruments)
             {
-                _symbolList = Symbols.GetSymbols(Watchlists.FirstOrDefault(w => w.Name == WatchListName).SymbolNames.ToArray()).ToList();
-
-
-                foreach (Symbol symbol in _symbolList)
+                foreach (string symbolName in Watchlists.FirstOrDefault(w => w.Name == WatchListName).SymbolNames.ToArray())
                 {
-                    var bars = MarketData.GetBars(TimeFrame.Daily, symbol.Name);
+                    _symbolList.Add(symbolName, Symbols.GetSymbol(symbolName));
+                }
+
+                foreach (KeyValuePair<string, Symbol> symbol in _symbolList)
+                {
+                    var bars = MarketData.GetBars(TimeFrame.Daily, symbol.Key);
                     if (!TradeOnTime)
                     {
                         bars.BarOpened += OnBarsBarOpened;
@@ -71,13 +90,29 @@ namespace cAlgo.Robots
                     {
                         bars.Tick += OnBarTick;
                     }
-                    _atr.Add(Indicators.AverageTrueRange(bars, 14, MovingAverageType.Exponential));
+                    _atrList.Add(symbol.Key, Indicators.AverageTrueRange(bars, 14, MovingAverageType.Exponential));
 
                     //Load here the specific indicators for this bot for multiple Instruments
+                    _sslList.Add(symbol.Key, Indicators.GetIndicator<SSLChannel>(bars, SSLPeriod, SSLMAType));
                 }
             }
+            else
+            {
+                _atr = Indicators.AverageTrueRange(14, MovingAverageType.Exponential);
+                _ssl = Indicators.GetIndicator<SSLChannel>(SSLPeriod, SSLMAType);
+                //Load here the specific indicators for this bot for a single instrument
 
-            //Load here the specific indicators for this bot for a single instrument
+            }
+            Positions.Closed += PositionsOnClosed;
+        }
+
+        private void PositionsOnClosed(PositionClosedEventArgs obj)
+        {
+            if (obj.Reason == PositionCloseReason.TakeProfit)
+            {
+                Position position = Positions.Find(obj.Position.Label);
+                ModifyPosition(position, position.EntryPrice, null, false);
+            }
 
         }
 
@@ -85,7 +120,7 @@ namespace cAlgo.Robots
         {
             if (TradeMultipleInstruments && TradeOnTime && TimeToTrade())
             {
-                MakeTrades(obj.Bars);
+                MakeTrades(obj.Bars, _symbolList[obj.Bars.SymbolName], _atrList[obj.Bars.SymbolName]);
             }
         }
 
@@ -93,7 +128,7 @@ namespace cAlgo.Robots
         {
             if (TradeMultipleInstruments && !TradeOnTime)
             {
-                MakeTrades(obj.Bars);
+                MakeTrades(obj.Bars, _symbolList[obj.Bars.SymbolName], _atrList[obj.Bars.SymbolName]);
             }
         }
 
@@ -101,7 +136,7 @@ namespace cAlgo.Robots
         {
             if (!TradeMultipleInstruments && TradeOnTime && TimeToTrade())
             {
-                MakeTrades(Bars);
+                MakeTrades(Bars, Symbol, _atr);
             }
         }
 
@@ -109,24 +144,53 @@ namespace cAlgo.Robots
         {
             if (!TradeMultipleInstruments && !TradeOnTime)
             {
-                MakeTrades(Bars);
+                MakeTrades(Bars, Symbol, _atr);
             }
         }
 
-        private void MakeTrades(Bars bars)
+        private void MakeTrades(Bars bars, Symbol symbol, AverageTrueRange atr)
         {
+            string label = string.Format("{0}_{1}", _botName, symbol.Name);
+
+            double barSize = Math.Round(Math.Abs((bars.ClosePrices.Last(_barToCheck + 1) - bars.OpenPrices.Last(_barToCheck + 1)) / symbol.PipSize), 0);
+            double atrSize = Math.Round(atr.Result.Last(_barToCheck) / symbol.PipSize, 0);
+
+            if (barSize > atrSize && !_hadBigBar)
+            {
+                Print(string.Format("barSize = {0} --- atrSize = {1} --- for Symbol: {2}", barSize, atrSize, symbol.Name));
+                Print("Bar to large for ATR at " + Server.Time.Date);
+                if (OpenTrade(bars) != null)
+                {
+                    Close(OpenTrade(bars).Item2, symbol, label);
+                    Close(OpenTrade(bars).Item1, symbol, label);
+                }
+                _barToCheck++;
+                _hadBigBar = true;
+                return;
+            }
+
             if (OpenTrade(bars) != null)
             {
-                Close(OpenTrade(bars).Item2, bars.SymbolName);
-                Open(OpenTrade(bars).Item1, bars.SymbolName);
+                Close(OpenTrade(bars).Item2, symbol, label);
+                Open(OpenTrade(bars).Item1, symbol, atr, label);
+            }
+
+            if (_hadBigBar)
+            {
+                _barToCheck = TradeOnTime ? 0 : 1;
+                _hadBigBar = false;
             }
         }
 
         private Tuple<TradeType, TradeType> OpenTrade(Bars bars)
         {
-            int index = _symbolList.IndexOf(Symbols.GetSymbol(bars.SymbolName));
+            SSLChannel ssl = TradeMultipleInstruments ? _sslList[bars.SymbolName] : _ssl;
+            double SSLUp = ssl._sslUp.Last(_barToCheck);
+            double PrevSSLUp = ssl._sslUp.Last(_barToCheck + 1);
+            double SSLDown = ssl._sslDown.Last(_barToCheck);
+            double PrevSSLDown = ssl._sslDown.Last(_barToCheck + 1);
 
-            if (false)
+            if (SSLUp > SSLDown && PrevSSLUp < PrevSSLDown)
             {
                 return new Tuple<TradeType, TradeType>(TradeType.Buy, TradeType.Sell);
             }
@@ -139,42 +203,40 @@ namespace cAlgo.Robots
         }
 
         //Function for opening a new trade
-        private void Open(TradeType tradeType, string instrument)
+        private void Open(TradeType tradeType, Symbol symbol, AverageTrueRange atr, string label)
         {
-            string label = _botName + " _ " + instrument;
-            int symbolIndex = _symbolList.FindIndex(s => s.Name == instrument);
-            Symbol sym = Symbols.GetSymbol(instrument);
-            double risk = RiskPct;
-
             //Check there's no existing position before entering a trade, label contains the Indicatorname and the currency
-            if (Positions.Find(label) != null)
+            if (Positions.Find(label, symbol.Name, tradeType) != null)
             {
                 return;
             }
-
             //Calculate trade amount based on ATR
-            double atr = Math.Round(_atr[symbolIndex].Result.Last(0) / sym.PipSize, 0);
-            double tradeAmount = Account.Equity * risk / (SlFactor * atr * sym.PipValue);
-            tradeAmount = sym.NormalizeVolumeInUnits(tradeAmount, RoundingMode.Down);
+            double atrSize = Math.Round(atr.Result.Last(_barToCheck) / symbol.PipSize, 0);
+            double tradeAmount = Account.Equity * riskPercentage / (SlFactor * atrSize * symbol.PipValue);
+            tradeAmount = symbol.NormalizeVolumeInUnits(tradeAmount, RoundingMode.Down);
+            tradeAmount = (int)tradeAmount / 2000;
+            tradeAmount = tradeAmount * 1000;
 
-            ExecuteMarketOrder(tradeType, instrument, tradeAmount, label, SlFactor * atr, TpFactor * atr);
+            ExecuteMarketOrder(tradeType, symbol.Name, tradeAmount, label, SlFactor * atrSize, TpFactor * atrSize);
+            ExecuteMarketOrder(tradeType, symbol.Name, tradeAmount, label, SlFactor * atrSize, null);
         }
 
         //Function for closing trades
-        private void Close(TradeType tradeType, string instrument)
+        private void Close(TradeType tradeType, Symbol symbol, string label)
         {
-            string label = _botName + " _ " + instrument;
-            foreach (Position position in Positions.FindAll(label, SymbolName, tradeType))
+            if (Positions.FindAll(label, symbol.Name, tradeType) == null)
+            {
+                return;
+            }
+            foreach (Position position in Positions.FindAll(label, symbol.Name, tradeType))
+            {
                 ClosePosition(position);
+            }
         }
 
         private bool TimeToTrade()
         {
-            if (Server.Time.Hour == TradeHour && Server.Time.Minute == TradeMinute)
-            {
-                return true;
-            }
-            return false;
+            return Server.Time.Hour == TradeHour && Server.Time.Minute == TradeMinute;
         }
     }
 }
