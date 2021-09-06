@@ -197,9 +197,7 @@ namespace cAlgo.Robots
             //Calculate trade amount based on ATR
             double atrSize = Math.Round(atr.Result.Last(_barToCheck) / symbol.PipSize, 0);
             double tradeAmount = Account.Equity * riskPercentage / (SlFactor * atrSize * symbol.PipValue);
-            tradeAmount = symbol.NormalizeVolumeInUnits(tradeAmount, RoundingMode.Down);
-            tradeAmount = (int)tradeAmount / 2000;
-            tradeAmount *= 1000;
+            tradeAmount = symbol.NormalizeVolumeInUnits(tradeAmount / 2, RoundingMode.Down);
 
             ExecuteMarketOrder(tradeType, symbol.Name, tradeAmount, label, SlFactor * atrSize, TpFactor * atrSize);
             ExecuteMarketOrder(tradeType, symbol.Name, tradeAmount, label, SlFactor * atrSize, null);
