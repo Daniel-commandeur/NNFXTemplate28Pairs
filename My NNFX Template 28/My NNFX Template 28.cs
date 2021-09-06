@@ -38,13 +38,6 @@ namespace cAlgo.Robots
         [Parameter("Trade Minute", Group = "General Settings", DefaultValue = "55")]
         public int TradeMinute { get; set; }
 
-        //Parameters for the Imported indicators
-        [Parameter("SSL Period", Group = "Indicator Settings", DefaultValue = 10)]
-        public int SSLPeriod { get; set; }
-
-        [Parameter("SSL MA Type", Group = "Indicator Settings", DefaultValue = MovingAverageType.Simple)]
-        public MovingAverageType SSLMAType { get; set; }
-
 
         //indicator variables for the Template for multi symbols
         private readonly Dictionary<string, AverageTrueRange> _atrList = new Dictionary<string, AverageTrueRange>();
@@ -60,8 +53,6 @@ namespace cAlgo.Robots
 
 
         //indicator variables for the Imported indicators
-        private readonly Dictionary<string, SSLChannel> _sslList = new Dictionary<string, SSLChannel>();
-        private SSLChannel _ssl;
 
 
         protected override void OnStart()
@@ -93,13 +84,11 @@ namespace cAlgo.Robots
                     _atrList.Add(symbol.Key, Indicators.AverageTrueRange(bars, 14, MovingAverageType.Exponential));
 
                     //Load here the specific indicators for this bot for multiple Instruments
-                    _sslList.Add(symbol.Key, Indicators.GetIndicator<SSLChannel>(bars, SSLPeriod, SSLMAType));
                 }
             }
             else
             {
                 _atr = Indicators.AverageTrueRange(14, MovingAverageType.Exponential);
-                _ssl = Indicators.GetIndicator<SSLChannel>(SSLPeriod, SSLMAType);
                 //Load here the specific indicators for this bot for a single instrument
 
             }
@@ -184,13 +173,8 @@ namespace cAlgo.Robots
 
         private Tuple<TradeType, TradeType> OpenTrade(Bars bars)
         {
-            SSLChannel ssl = TradeMultipleInstruments ? _sslList[bars.SymbolName] : _ssl;
-            double SSLUp = ssl._sslUp.Last(_barToCheck);
-            double PrevSSLUp = ssl._sslUp.Last(_barToCheck + 1);
-            double SSLDown = ssl._sslDown.Last(_barToCheck);
-            double PrevSSLDown = ssl._sslDown.Last(_barToCheck + 1);
 
-            if (SSLUp > SSLDown && PrevSSLUp < PrevSSLDown)
+            if (false)
             {
                 return new Tuple<TradeType, TradeType>(TradeType.Buy, TradeType.Sell);
             }
@@ -215,7 +199,7 @@ namespace cAlgo.Robots
             double tradeAmount = Account.Equity * riskPercentage / (SlFactor * atrSize * symbol.PipValue);
             tradeAmount = symbol.NormalizeVolumeInUnits(tradeAmount, RoundingMode.Down);
             tradeAmount = (int)tradeAmount / 2000;
-            tradeAmount = tradeAmount * 1000;
+            tradeAmount *= 1000;
 
             ExecuteMarketOrder(tradeType, symbol.Name, tradeAmount, label, SlFactor * atrSize, TpFactor * atrSize);
             ExecuteMarketOrder(tradeType, symbol.Name, tradeAmount, label, SlFactor * atrSize, null);
