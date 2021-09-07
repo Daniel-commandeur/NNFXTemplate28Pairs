@@ -39,9 +39,19 @@ namespace cAlgo.Robots
         public int TradeMinute { get; set; }
 
 
+
+        [Parameter("ADX Source", Group = "General Settings", DefaultValue = DataSerie.Close)]
+        public DataSerie ESource { get; set; }
+
+        [Parameter("ADX Period", Group = "General Settings", DefaultValue = 6)]
+        public int ADXPeriod { get; set; }
+
         //indicator variables for the Template for multi symbols
         private readonly Dictionary<string, AverageTrueRange> _atrList = new Dictionary<string, AverageTrueRange>();
         private readonly Dictionary<string, Symbol> _symbolList = new Dictionary<string, Symbol>();
+
+
+        private readonly Dictionary<string, AdxVma> _adxList = new Dictionary<string, AdxVma>();
 
         //indicator variables for the Template for single symbol
         private string _botName;
@@ -53,7 +63,7 @@ namespace cAlgo.Robots
 
 
         //indicator variables for the Imported indicators
-
+        private AdxVma _adx;
 
         protected override void OnStart()
         {
@@ -84,15 +94,33 @@ namespace cAlgo.Robots
                     _atrList.Add(symbol.Key, Indicators.AverageTrueRange(bars, 14, MovingAverageType.Exponential));
 
                     //Load here the specific indicators for this bot for multiple Instruments
+                    _adxList.Add(symbol.Key, Indicators.GetIndicator<AdxVma>(bars, GetDataseries(ESource, bars), ADXPeriod));
                 }
             }
             else
             {
                 _atr = Indicators.AverageTrueRange(14, MovingAverageType.Exponential);
                 //Load here the specific indicators for this bot for a single instrument
-
+                _adx = Indicators.GetIndicator<AdxVma>(GetDataseries(ESource, Bars), ADXPeriod);
             }
             Positions.Closed += PositionsOnClosed;
+        }
+
+        private DataSeries GetDataseries(DataSerie eSource, Bars bars)
+        {
+            switch (eSource)
+            {
+                case DataSerie.High:
+                    return bars.HighPrices;
+                case DataSerie.Low:
+                    return bars.LowPrices;
+                case DataSerie.Open:
+                    return bars.OpenPrices;
+                case DataSerie.Close:
+                    return bars.ClosePrices;
+                default:
+                    return bars.ClosePrices;
+            }
         }
 
         private void PositionsOnClosed(PositionClosedEventArgs obj)
@@ -100,7 +128,7 @@ namespace cAlgo.Robots
             if (obj.Reason == PositionCloseReason.TakeProfit)
             {
                 Position position = Positions.Find(obj.Position.Label);
-                ModifyPosition(position, position.EntryPrice, null, false);
+                ModifyPosition(position, position.EntryPrice, null, true);
             }
 
         }
@@ -144,24 +172,26 @@ namespace cAlgo.Robots
             double barSize = Math.Round(Math.Abs((bars.ClosePrices.Last(_barToCheck + 1) - bars.OpenPrices.Last(_barToCheck + 1)) / symbol.PipSize), 0);
             double atrSize = Math.Round(atr.Result.Last(_barToCheck) / symbol.PipSize, 0);
 
+            var opentrade = OpenTrade(bars);
+
             if (barSize > atrSize && !_hadBigBar)
             {
-                Print(string.Format("barSize = {0} --- atrSize = {1} --- for Symbol: {2}", barSize, atrSize, symbol.Name));
-                Print("Bar to large for ATR at " + Server.Time.Date);
-                if (OpenTrade(bars) != null)
+                //Print(string.Format("barSize = {0} --- atrSize = {1} --- for Symbol: {2}", barSize, atrSize, symbol.Name));
+                //Print("Bar to large for ATR at " + Server.Time.Date);
+                if (opentrade != null)
                 {
-                    Close(OpenTrade(bars).Item2, symbol, label);
-                    Close(OpenTrade(bars).Item1, symbol, label);
+                    Close(opentrade.Item2, symbol, label);
+                    Close(opentrade.Item1, symbol, label);
                 }
                 _barToCheck++;
                 _hadBigBar = true;
                 return;
             }
 
-            if (OpenTrade(bars) != null)
+            if (opentrade != null)
             {
-                Close(OpenTrade(bars).Item2, symbol, label);
-                Open(OpenTrade(bars).Item1, symbol, atr, label);
+                Close(opentrade.Item2, symbol, label);
+                Open(opentrade.Item1, symbol, atr, label);
             }
 
             if (_hadBigBar)
@@ -171,19 +201,50 @@ namespace cAlgo.Robots
             }
         }
 
+        public CandleDir lastdir = CandleDir.Flat;
         private Tuple<TradeType, TradeType> OpenTrade(Bars bars)
         {
+            AdxVma adx = TradeMultipleInstruments ? _adxList[bars.SymbolName] : _adx;
+            //Print(string.Format("Rising: {0} ---- Flat: {1} ---- Falling: {2}", adx.Rising.LastValue, adx.Flat.LastValue, adx.Falling.LastValue));
 
-            if (false)
+            CandleDir dir = SetCandleDir(adx);
+
+            if (dir == CandleDir.Rising && (lastdir == CandleDir.Flat || lastdir == CandleDir.Falling))
             {
+                lastdir = dir;
                 return new Tuple<TradeType, TradeType>(TradeType.Buy, TradeType.Sell);
             }
-            else if (false)
+
+            else if (dir == CandleDir.Falling && (lastdir == CandleDir.Flat || lastdir == CandleDir.Rising))
             {
+                lastdir = dir;
                 return new Tuple<TradeType, TradeType>(TradeType.Sell, TradeType.Buy);
             }
-
+            lastdir = dir;
             return null;
+        }
+        public enum CandleDir
+        {
+            Rising,
+            Falling,
+            Flat
+        }
+
+        private CandleDir SetCandleDir(AdxVma adx)
+        {
+            if (adx.Rising.LastValue < 1000)
+            {
+                return CandleDir.Rising;
+            }
+            else if (adx.Falling.LastValue < 1000)
+            {
+                return CandleDir.Falling;
+            }
+            else if (adx.Flat.LastValue < 1000)
+            {
+                return CandleDir.Flat;
+            }
+            return CandleDir.Flat;
         }
 
         //Function for opening a new trade
@@ -220,5 +281,13 @@ namespace cAlgo.Robots
         {
             return Server.Time.Hour == TradeHour && Server.Time.Minute == TradeMinute;
         }
+    }
+
+    public enum DataSerie
+    {
+        High,
+        Low,
+        Open,
+        Close
     }
 }

@@ -65,5 +65,9 @@
       <Project>{7AF4B491-1558-4FC4-B55C-AD15417A896A}</Project>
       <Name>SSL Channel</Name>
     </ProjectReference>
+    <ProjectReference Include="..\..\..\Indicators\AdxVma\AdxVma\AdxVma.csproj">
+      <Project>{5BAC46AF-A611-401F-8038-C018FEBA2882}</Project>
+      <Name>AdxVma</Name>
+    </ProjectReference>
   </ItemGroup>
 </Project>
