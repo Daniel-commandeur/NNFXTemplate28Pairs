@@ -40,11 +40,27 @@ namespace cAlgo.Robots
 
 
 
-        [Parameter("ADX Source", Group = "General Settings", DefaultValue = DataSerie.Close)]
+        [Parameter("ADX Source", Group = "ADX Settings", DefaultValue = DataSerie.Close)]
         public DataSerie ESource { get; set; }
 
-        [Parameter("ADX Period", Group = "General Settings", DefaultValue = 6)]
+        [Parameter("ADX Period", Group = "ADX Settings", DefaultValue = 6)]
         public int ADXPeriod { get; set; }
+
+        [Parameter("SSL Period", Group = "SSL Settings", DefaultValue = 10)]
+        public int SSLPeriod { get; set; }
+
+        [Parameter("SSL MA Type", Group = "SSL Settings", DefaultValue = MovingAverageType.Simple)]
+        public MovingAverageType SSLMAType { get; set; }
+
+        [Parameter("Chaikin Period", Group = "Chaikin Settings", DefaultValue = 14)]
+        public int CVPeriod { get; set; }
+
+        [Parameter("Chaikin Rate Of Change", Group = "Chaikin Settings", DefaultValue = 10)]
+        public int CVRateOC { get; set; }
+
+        [Parameter("Chaikin MA Type", Group = "Chaikin Settings", DefaultValue = MovingAverageType.Simple)]
+        public MovingAverageType CVMAType { get; set; }
+
 
         //indicator variables for the Template for multi symbols
         private readonly Dictionary<string, AverageTrueRange> _atrList = new Dictionary<string, AverageTrueRange>();
@@ -52,6 +68,11 @@ namespace cAlgo.Robots
 
 
         private readonly Dictionary<string, AdxVma> _adxList = new Dictionary<string, AdxVma>();
+        private readonly Dictionary<string, SSLChannel> _sslList = new Dictionary<string, SSLChannel>();
+        private readonly Dictionary<string, ChaikinVolatility> _cvList = new Dictionary<string, ChaikinVolatility>();
+
+        private SSLChannel _ssl;
+        private ChaikinVolatility _cv;
 
         //indicator variables for the Template for single symbol
         private string _botName;
@@ -95,13 +116,18 @@ namespace cAlgo.Robots
 
                     //Load here the specific indicators for this bot for multiple Instruments
                     _adxList.Add(symbol.Key, Indicators.GetIndicator<AdxVma>(bars, GetDataseries(ESource, bars), ADXPeriod));
+                    _sslList.Add(symbol.Key, Indicators.GetIndicator<SSLChannel>(bars, SSLPeriod, SSLMAType));
+                    _cvList.Add(symbol.Key, Indicators.ChaikinVolatility(bars, CVPeriod, CVRateOC, CVMAType));
                 }
             }
             else
             {
                 _atr = Indicators.AverageTrueRange(14, MovingAverageType.Exponential);
+
                 //Load here the specific indicators for this bot for a single instrument
                 _adx = Indicators.GetIndicator<AdxVma>(GetDataseries(ESource, Bars), ADXPeriod);
+                _ssl = Indicators.GetIndicator<SSLChannel>(SSLPeriod, SSLMAType);
+                _cv = Indicators.ChaikinVolatility(CVPeriod, CVRateOC, CVMAType);
             }
             Positions.Closed += PositionsOnClosed;
         }
@@ -128,7 +154,8 @@ namespace cAlgo.Robots
             if (obj.Reason == PositionCloseReason.TakeProfit)
             {
                 Position position = Positions.Find(obj.Position.Label);
-                ModifyPosition(position, position.EntryPrice, null, true);
+                if (position != null)
+                    ModifyPosition(position, position.EntryPrice, null, true);
             }
 
         }
@@ -204,18 +231,25 @@ namespace cAlgo.Robots
         public CandleDir lastdir = CandleDir.Flat;
         private Tuple<TradeType, TradeType> OpenTrade(Bars bars)
         {
+            SSLChannel ssl = TradeMultipleInstruments ? _sslList[bars.SymbolName] : _ssl;
             AdxVma adx = TradeMultipleInstruments ? _adxList[bars.SymbolName] : _adx;
+            ChaikinVolatility cv = TradeMultipleInstruments ? _cvList[bars.SymbolName] : _cv;
+            double SSLUp = ssl._sslUp.Last(_barToCheck);
+            double PrevSSLUp = ssl._sslUp.Last(_barToCheck + 1);
+            double SSLDown = ssl._sslDown.Last(_barToCheck);
+            double PrevSSLDown = ssl._sslDown.Last(_barToCheck + 1);
+            
             //Print(string.Format("Rising: {0} ---- Flat: {1} ---- Falling: {2}", adx.Rising.LastValue, adx.Flat.LastValue, adx.Falling.LastValue));
 
             CandleDir dir = SetCandleDir(adx);
 
-            if (dir == CandleDir.Rising && (lastdir == CandleDir.Flat || lastdir == CandleDir.Falling))
+            if (dir == CandleDir.Rising && SSLUp > SSLDown && PrevSSLUp < PrevSSLDown && cv.Result.Last(_barToCheck) > 0)
             {
                 lastdir = dir;
                 return new Tuple<TradeType, TradeType>(TradeType.Buy, TradeType.Sell);
             }
 
-            else if (dir == CandleDir.Falling && (lastdir == CandleDir.Flat || lastdir == CandleDir.Rising))
+            else if (dir == CandleDir.Falling && SSLUp < SSLDown && PrevSSLUp > PrevSSLDown && cv.Result.Last(_barToCheck) > 0)
             {
                 lastdir = dir;
                 return new Tuple<TradeType, TradeType>(TradeType.Sell, TradeType.Buy);
@@ -250,11 +284,21 @@ namespace cAlgo.Robots
         //Function for opening a new trade
         private void Open(TradeType tradeType, Symbol symbol, AverageTrueRange atr, string label)
         {
-            //Check there's no existing position before entering a trade, label contains the Indicatorname and the currency
-            if (Positions.Find(label, symbol.Name, tradeType) != null)
+            List<string> list = new List<string>() { symbol.Name };
+            if (TradeMultipleInstruments)
             {
-                return;
+                list = Watchlists.FirstOrDefault(w => w.Name == WatchListName).SymbolNames.Where(s => s.Contains(symbol.Name.Substring(0, 3)) || s.Contains(symbol.Name.Substring(3, 3))).ToList();
             }
+
+            //Check there's no existing position before entering a trade, label contains the Indicatorname and the currency
+            foreach (var symbolname in list)
+            {
+                if (Positions.Find(label, symbolname, tradeType) != null)
+                {
+                    return;
+                }
+            }
+
             //Calculate trade amount based on ATR
             double atrSize = Math.Round(atr.Result.Last(_barToCheck) / symbol.PipSize, 0);
             double tradeAmount = Account.Equity * riskPercentage / (SlFactor * atrSize * symbol.PipValue);
