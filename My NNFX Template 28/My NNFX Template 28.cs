@@ -146,8 +146,6 @@ namespace cAlgo.Robots
 
             if (barSize > atrSize && !_hadBigBar)
             {
-                Print(string.Format("barSize = {0} --- atrSize = {1} --- for Symbol: {2}", barSize, atrSize, symbol.Name));
-                Print("Bar to large for ATR at " + Server.Time.Date);
                 if (OpenTrade(bars) != null)
                 {
                     Close(OpenTrade(bars).Item2, symbol, label);
@@ -173,7 +171,6 @@ namespace cAlgo.Robots
 
         private Tuple<TradeType, TradeType> OpenTrade(Bars bars)
         {
-
             if (false)
             {
                 return new Tuple<TradeType, TradeType>(TradeType.Buy, TradeType.Sell);
