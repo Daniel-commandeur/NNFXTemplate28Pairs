@@ -69,5 +69,9 @@
       <Project>{5BAC46AF-A611-401F-8038-C018FEBA2882}</Project>
       <Name>AdxVma</Name>
     </ProjectReference>
+    <ProjectReference Include="..\..\Libraries\MakeTradeLib\MakeTradeLib.csproj">
+      <Project>{d3a09db4-cbc3-4336-b411-dc8dd4de204f}</Project>
+      <Name>MakeTradeLib</Name>
+    </ProjectReference>
   </ItemGroup>
 </Project>

@@ -239,8 +239,6 @@ namespace cAlgo.Robots
             double SSLDown = ssl._sslDown.Last(_barToCheck);
             double PrevSSLDown = ssl._sslDown.Last(_barToCheck + 1);
             
-            //Print(string.Format("Rising: {0} ---- Flat: {1} ---- Falling: {2}", adx.Rising.LastValue, adx.Flat.LastValue, adx.Falling.LastValue));
-
             CandleDir dir = SetCandleDir(adx);
 
             if (dir == CandleDir.Rising && SSLUp > SSLDown && PrevSSLUp < PrevSSLDown && cv.Result.Last(_barToCheck) > 0)
