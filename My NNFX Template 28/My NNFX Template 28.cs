@@ -5,6 +5,8 @@ using cAlgo.API;
 using cAlgo.API.Indicators;
 using cAlgo.API.Internals;
 using cAlgo.Indicators;
+using TradeLib;
+using TradeLib.Entities;
 
 namespace cAlgo.Robots
 {
@@ -80,6 +82,7 @@ namespace cAlgo.Robots
         private int _barToCheck;
         private double riskPercentage;
         private bool _hadBigBar = false;
+        private Trade _trade;
 
 
 
@@ -93,6 +96,8 @@ namespace cAlgo.Robots
 
             _barToCheck = TradeOnTime ? 0 : 1;
             riskPercentage = (double)RiskPct / 100;
+
+            _trade = new Trade();
 
             if (TradeMultipleInstruments)
             {
@@ -217,8 +222,22 @@ namespace cAlgo.Robots
 
             if (opentrade != null)
             {
+                TradeInfo tradeInfo = new TradeInfo 
+                {
+                    Atr = atr,
+                    BarToCheck = _barToCheck,
+                    Label = label,
+                    RiskPercentage = riskPercentage,
+                    StopLossFactor = SlFactor,
+                    TakeProfitFactor = TpFactor,
+                    Symbol = symbol,
+                    TradeMultipleInstruments = TradeMultipleInstruments,
+                    TradeType = opentrade.Item1,
+                    WatchListName = WatchListName
+                };
+
                 Close(opentrade.Item2, symbol, label);
-                Open(opentrade.Item1, symbol, atr, label);
+                _trade.Open(tradeInfo);
             }
 
             if (_hadBigBar)
@@ -234,11 +253,11 @@ namespace cAlgo.Robots
             SSLChannel ssl = TradeMultipleInstruments ? _sslList[bars.SymbolName] : _ssl;
             AdxVma adx = TradeMultipleInstruments ? _adxList[bars.SymbolName] : _adx;
             ChaikinVolatility cv = TradeMultipleInstruments ? _cvList[bars.SymbolName] : _cv;
-            double SSLUp = ssl._sslUp.Last(_barToCheck);
-            double PrevSSLUp = ssl._sslUp.Last(_barToCheck + 1);
-            double SSLDown = ssl._sslDown.Last(_barToCheck);
-            double PrevSSLDown = ssl._sslDown.Last(_barToCheck + 1);
-            
+            double SSLUp = ssl.SslUp.Last(_barToCheck);
+            double PrevSSLUp = ssl.SslUp.Last(_barToCheck + 1);
+            double SSLDown = ssl.SslDown.Last(_barToCheck);
+            double PrevSSLDown = ssl.SslDown.Last(_barToCheck + 1);
+
             CandleDir dir = SetCandleDir(adx);
 
             if (dir == CandleDir.Rising && SSLUp > SSLDown && PrevSSLUp < PrevSSLDown && cv.Result.Last(_barToCheck) > 0)
@@ -280,31 +299,31 @@ namespace cAlgo.Robots
         }
 
         //Function for opening a new trade
-        private void Open(TradeType tradeType, Symbol symbol, AverageTrueRange atr, string label)
-        {
-            List<string> list = new List<string>() { symbol.Name };
-            if (TradeMultipleInstruments)
-            {
-                list = Watchlists.FirstOrDefault(w => w.Name == WatchListName).SymbolNames.Where(s => s.Contains(symbol.Name.Substring(0, 3)) || s.Contains(symbol.Name.Substring(3, 3))).ToList();
-            }
+        //private void Open(TradeType tradeType, Symbol symbol, AverageTrueRange atr, string label)
+        //{
+        //    List<string> list = new List<string>() { symbol.Name };
+        //    if (TradeMultipleInstruments)
+        //    {
+        //        list = Watchlists.FirstOrDefault(w => w.Name == WatchListName).SymbolNames.Where(s => s.Contains(symbol.Name.Substring(0, 3)) || s.Contains(symbol.Name.Substring(3, 3))).ToList();
+        //    }
 
-            //Check there's no existing position before entering a trade, label contains the Indicatorname and the currency
-            foreach (var symbolname in list)
-            {
-                if (Positions.Find(label, symbolname, tradeType) != null)
-                {
-                    return;
-                }
-            }
+        //    //Check there's no existing position before entering a trade, label contains the Indicatorname and the currency
+        //    foreach (var symbolname in list)
+        //    {
+        //        if (Positions.Find(label, symbolname, tradeType) != null)
+        //        {
+        //            return;
+        //        }
+        //    }
 
-            //Calculate trade amount based on ATR
-            double atrSize = Math.Round(atr.Result.Last(_barToCheck) / symbol.PipSize, 0);
-            double tradeAmount = Account.Equity * riskPercentage / (SlFactor * atrSize * symbol.PipValue);
-            tradeAmount = symbol.NormalizeVolumeInUnits(tradeAmount / 2, RoundingMode.Down);
+        //    //Calculate trade amount based on ATR
+        //    double atrSize = Math.Round(atr.Result.Last(_barToCheck) / symbol.PipSize, 0);
+        //    double tradeAmount = Account.Equity * riskPercentage / (SlFactor * atrSize * symbol.PipValue);
+        //    tradeAmount = symbol.NormalizeVolumeInUnits(tradeAmount / 2, RoundingMode.Down);
 
-            ExecuteMarketOrder(tradeType, symbol.Name, tradeAmount, label, SlFactor * atrSize, TpFactor * atrSize);
-            ExecuteMarketOrder(tradeType, symbol.Name, tradeAmount, label, SlFactor * atrSize, null);
-        }
+        //    ExecuteMarketOrder(tradeType, symbol.Name, tradeAmount, label, SlFactor * atrSize, TpFactor * atrSize);
+        //    ExecuteMarketOrder(tradeType, symbol.Name, tradeAmount, label, SlFactor * atrSize, null);
+        //}
 
         //Function for closing trades
         private void Close(TradeType tradeType, Symbol symbol, string label)

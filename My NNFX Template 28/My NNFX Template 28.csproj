@@ -44,6 +44,9 @@
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\..\..\..\API\cAlgo.API.dll</HintPath>
     </Reference>
+    <Reference Include="TradeLibrary">
+      <HintPath>..\..\Libraries\TradeLibrary\bin\Debug\TradeLibrary.dll</HintPath>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="My NNFX Template 28.cs" />
@@ -68,10 +71,6 @@
     <ProjectReference Include="..\..\..\Indicators\AdxVma\AdxVma\AdxVma.csproj">
       <Project>{5BAC46AF-A611-401F-8038-C018FEBA2882}</Project>
       <Name>AdxVma</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\..\Libraries\MakeTradeLib\MakeTradeLib.csproj">
-      <Project>{d3a09db4-cbc3-4336-b411-dc8dd4de204f}</Project>
-      <Name>MakeTradeLib</Name>
     </ProjectReference>
   </ItemGroup>
 </Project>
