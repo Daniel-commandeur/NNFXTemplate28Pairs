@@ -1,8 +1,8 @@
-Microsoft Visual Studio Solution File, Format Version 12.00
+﻿Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.31624.102
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "My NNFX Template 28", "My NNFX Template 28\My NNFX Template 28.csproj", "{EF8589AB-7DA2-435F-849A-37C55D8FE88A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "My NNFX Template 28 Cleaning", "My NNFX Template 28 Cleaning\My NNFX Template 28 Cleaning.csproj", "{EF8589AB-7DA2-435F-849A-37C55D8FE88A}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SSL Channel", "..\..\Indicators\SSL Channel\SSL Channel\SSL Channel.csproj", "{7AF4B491-1558-4FC4-B55C-AD15417A896A}"
 EndProject

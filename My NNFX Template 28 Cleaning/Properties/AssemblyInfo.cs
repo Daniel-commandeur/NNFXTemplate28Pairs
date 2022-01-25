@@ -2,10 +2,10 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
 
-[assembly: AssemblyTitle("My NNFX Template 28")]
+[assembly: AssemblyTitle("My NNFX Template 28 Cleaning")]
 [assembly: AssemblyDescription("")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyProduct("My NNFX Template 28")]
+[assembly: AssemblyProduct("My NNFX Template 28 Cleaning")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
